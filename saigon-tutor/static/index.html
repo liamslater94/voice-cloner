@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saigon Tutor</title>
+<style>
+  :root {
+    --bg: #faf7f2; --card: #ffffff; --ink: #1f2328; --muted: #6b7280;
+    --accent: #c2410c; --accent-soft: #fff1e8; --line: #e7e2da;
+    --tip: #eef6ff; --fix: #fff7e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a; --card: #1f2125; --ink: #ecedef; --muted: #9aa0a8;
+      --accent: #fb923c; --accent-soft: #2b211b; --line: #2e3136;
+      --tip: #1b2533; --fix: #2c2614;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+           border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  select, button { font: inherit; }
+  select { padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--card); color: var(--ink); max-width: 100%; }
+  nav { display: flex; gap: 4px; }
+  nav button { border: 0; background: none; color: var(--muted); padding: 6px 10px;
+               border-radius: 8px; cursor: pointer; }
+  nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; padding-bottom: 120px; }
+  .msg { margin: 12px 0; display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .bubble { max-width: 85%; padding: 10px 14px; border-radius: 14px; background: var(--card);
+            border: 1px solid var(--line); }
+  .user .bubble { background: var(--accent); color: #fff; border-color: transparent; }
+  .vi { font-size: 18px; }
+  .en { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .note { font-size: 14px; margin-top: 8px; padding: 8px 10px; border-radius: 8px; }
+  .note.fix { background: var(--fix); }
+  .note.tip { background: var(--tip); }
+  .words { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 13px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft);
+          color: var(--accent); }
+  .actions { margin-top: 6px; display: flex; gap: 8px; }
+  .actions button { border: 0; background: none; color: var(--muted); cursor: pointer;
+                    font-size: 13px; padding: 2px 0; }
+  .composer { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg);
+              border-top: 1px solid var(--line); padding: 12px 16px; }
+  .composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; }
+  .composer input { flex: 1; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 10px;
+                    border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  .composer button { border: 0; border-radius: 10px; padding: 0 14px; cursor: pointer;
+                     background: var(--accent); color: #fff; }
+  .composer button.mic { background: var(--accent-soft); color: var(--accent); }
+  .composer button.mic.on { background: var(--accent); color: #fff; }
+  .composer button:disabled { opacity: .5; cursor: default; }
+  .empty { color: var(--muted); text-align: center; margin-top: 48px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; color: var(--muted); font-weight: 500; }
+  td .muted { color: var(--muted); font-size: 13px; }
+  .hidden { display: none; }
+  .error { color: #dc2626; text-align: center; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🇻🇳 Saigon Tutor</h1>
+  <nav>
+    <button id="tab-chat" class="active">Chat</button>
+    <button id="tab-vocab">Vocab</button>
+  </nav>
+  <select id="level" aria-label="Level">
+    <option value="beginner">Beginner</option>
+    <option value="intermediate">Intermediate</option>
+    <option value="advanced">Advanced</option>
+  </select>
+  <select id="voice" aria-label="Voice"></select>
+  <label style="font-size:14px"><input type="checkbox" id="slow" checked> Slow</label>
+  <button id="reset" title="Start a new conversation"
+          style="border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 10px;cursor:pointer">New chat</button>
+</header>
+
+<main>
+  <section id="chat"></section>
+  <section id="vocab" class="hidden"></section>
+</main>
+
+<div class="composer" id="composer">
+  <form id="form">
+    <button type="button" class="mic" id="mic" title="Speak Vietnamese">🎤</button>
+    <input id="input" autocomplete="off" placeholder="Chào cô! Or type in English…">
+    <button id="send">Send</button>
+  </form>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const chatEl = $("chat"), vocabEl = $("vocab");
+const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(k);
+                               localStorage.setItem(k, v); } catch { return null; } };
+
+// ---- Text-to-speech (browser voices for now; swap for a Southern voice later) ----
+let voices = [];
+function loadVoices() {
+  const all = speechSynthesis.getVoices();
+  voices = all.filter(v => v.lang.toLowerCase().startsWith("vi"));
+  const sel = $("voice");
+  sel.innerHTML = voices.length
+    ? voices.map((v, i) => `<option value="${i}">${v.name}</option>`).join("")
+    : `<option>No Vietnamese voice installed</option>`;
+  const saved = pref("voice");
+  if (saved && voices[saved]) sel.value = saved;
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
+$("voice").onchange = (e) => pref("voice", e.target.value);
+
+function speak(text) {
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "vi-VN";
+  const v = voices[$("voice").value];
+  if (v) u.voice = v;
+  u.rate = $("slow").checked ? 0.75 : 1;
+  speechSynthesis.speak(u);
+}
+
+// ---- Speech-to-text (browser recognizer, Vietnamese) ----
+const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+if (Rec) {
+  rec = new Rec();
+  rec.lang = "vi-VN";
+  rec.interimResults = true;
+  rec.onresult = (e) => {
+    $("input").value = Array.from(e.results).map(r => r[0].transcript).join("");
+  };
+  rec.onend = () => {
+    $("mic").classList.remove("on");
+    if ($("input").value.trim()) $("form").requestSubmit();
+  };
+  $("mic").onclick = () => {
+    if ($("mic").classList.contains("on")) return rec.stop();
+    $("input").value = "";
+    $("mic").classList.add("on");
+    rec.start();
+  };
+} else {
+  $("mic").disabled = true;
+  $("mic").title = "Speech recognition isn't supported in this browser (try Chrome)";
+}
+
+// ---- Rendering ----
+const esc = (s) => s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function addUser(text) {
+  chatEl.insertAdjacentHTML("beforeend",
+    `<div class="msg user"><div class="bubble">${esc(text)}</div></div>`);
+}
+
+function addTutor(r) {
+  const div = document.createElement("div");
+  div.className = "msg";
+  div.innerHTML = `<div class="bubble">
+    <div class="vi">${esc(r.reply_vi)}</div>
+    <div class="en hidden">${esc(r.reply_en)}</div>
+    ${r.correction ? `<div class="note fix">✏️ ${esc(r.correction)}</div>` : ""}
+    ${r.pronunciation_tip ? `<div class="note tip">🗣️ ${esc(r.pronunciation_tip)}</div>` : ""}
+    ${r.new_words.length ? `<div class="words">${r.new_words.map(w =>
+        `<span class="chip" title="${esc(w.note)}">${esc(w.vi)} · ${esc(w.en)}</span>`).join("")}</div>` : ""}
+    <div class="actions"><button data-a="play">🔊 Play</button><button data-a="en">Show English</button></div>
+  </div>`;
+  div.querySelector('[data-a="play"]').onclick = () => speak(r.reply_vi);
+  div.querySelector('[data-a="en"]').onclick = (e) => {
+    const en = div.querySelector(".en");
+    en.classList.toggle("hidden");
+    e.target.textContent = en.classList.contains("hidden") ? "Show English" : "Hide English";
+  };
+  chatEl.appendChild(div);
+}
+
+function showEmpty() {
+  chatEl.innerHTML = `<p class="empty">Say <b>“Chào cô!”</b> to start, or ask
+    “How do I order an iced coffee with milk?”</p>`;
+}
+
+async function loadHistory() {
+  const items = await (await fetch("/api/history")).json();
+  chatEl.innerHTML = "";
+  if (!items.length) return showEmpty();
+  items.forEach(m => m.role === "user" ? addUser(m.text) : addTutor(m.reply));
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+async function loadVocab() {
+  const words = await (await fetch("/api/vocab")).json();
+  vocabEl.innerHTML = words.length ? `<table>
+    <tr><th>Vietnamese</th><th>English</th><th>Seen</th><th></th></tr>
+    ${words.map(w => `<tr>
+      <td><b>${esc(w.vi)}</b> <button data-say="${esc(w.vi)}" style="border:0;background:none;cursor:pointer">🔊</button>
+          ${w.note ? `<div class="muted">${esc(w.note)}</div>` : ""}</td>
+      <td>${esc(w.en)}</td><td>${w.times_seen}</td>
+      <td><button data-del="${w.id}" style="border:0;background:none;cursor:pointer;color:var(--muted)">✕</button></td>
+    </tr>`).join("")}</table>`
+    : `<p class="empty">Words your tutor teaches you will appear here.</p>`;
+  vocabEl.querySelectorAll("[data-say]").forEach(b => b.onclick = () => speak(b.dataset.say));
+  vocabEl.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    await fetch(`/api/vocab/${b.dataset.del}`, { method: "DELETE" });
+    loadVocab();
+  });
+}
+
+// ---- Sending ----
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("input").value.trim();
+  if (!text) return;
+  if (chatEl.querySelector(".empty")) chatEl.innerHTML = "";
+  chatEl.querySelector(".error")?.remove();
+  addUser(text);
+  $("input").value = "";
+  $("send").disabled = true;
+  $("send").textContent = "…";
+  window.scrollTo(0, document.body.scrollHeight);
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, level: $("level").value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Something went wrong");
+    addTutor(data);
+    speak(data.reply_vi);
+  } catch (err) {
+    chatEl.insertAdjacentHTML("beforeend", `<p class="error">${esc(err.message)}</p>`);
+  } finally {
+    $("send").disabled = false;
+    $("send").textContent = "Send";
+    window.scrollTo(0, document.body.scrollHeight);
+  }
+};
+
+$("reset").onclick = async () => {
+  if (!confirm("Start a new conversation? Your vocab list is kept.")) return;
+  await fetch("/api/reset", { method: "POST" });
+  showEmpty();
+};
+
+// ---- Tabs & prefs ----
+function tab(name) {
+  $("tab-chat").classList.toggle("active", name === "chat");
+  $("tab-vocab").classList.toggle("active", name === "vocab");
+  chatEl.classList.toggle("hidden", name !== "chat");
+  vocabEl.classList.toggle("hidden", name !== "vocab");
+  $("composer").classList.toggle("hidden", name !== "chat");
+  if (name === "vocab") loadVocab();
+}
+$("tab-chat").onclick = () => tab("chat");
+$("tab-vocab").onclick = () => tab("vocab");
+$("level").value = pref("level") || "beginner";
+$("level").onchange = (e) => pref("level", e.target.value);
+
+loadHistory();
+</script>
+</body>
+</html>
